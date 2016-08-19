@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/logp"
+	"github.com/elastic/beats/libbeat/outputs"
 	"github.com/elastic/beats/libbeat/outputs/transport"
 )
 
@@ -140,23 +140,23 @@ func (conn *Connection) Close() error {
 // PublishEvents posts all events to the http endpoint. On error a slice with all
 // events not published will be returned.
 func (client *Client) PublishEvents(
-	events []common.MapStr,
-) ([]common.MapStr, error) {
+	data []outputs.Data,
+) ([]outputs.Data, error) {
 	begin := time.Now()
 	publishEventsCallCount.Add(1)
 
-	if len(events) == 0 {
+	if len(data) == 0 {
 		return nil, nil
 	}
 
 	if !client.connected {
-		return events, ErrNotConnected
+		return data, ErrNotConnected
 	}
 
-	var failedEvents []common.MapStr
+	var failedEvents []outputs.Data
 
 	sendErr := error(nil)
-	for _, event := range events {
+	for _, event := range data {
 		sendErr = client.PublishEvent(event)
 		// TODO more gracefully handle failures return the failed events
 		// below instead of bailing out directly here:
@@ -166,10 +166,10 @@ func (client *Client) PublishEvents(
 	}
 
 	debugf("PublishEvents: %d metrics have been published over HTTP in %v.",
-		len(events),
+		len(data),
 		time.Now().Sub(begin))
 
-	ackedEvents.Add(int64(len(events) - len(failedEvents)))
+	ackedEvents.Add(int64(len(data) - len(failedEvents)))
 	eventsNotAcked.Add(int64(len(failedEvents)))
 	if len(failedEvents) > 0 {
 		return failedEvents, sendErr
@@ -178,10 +178,12 @@ func (client *Client) PublishEvents(
 	return nil, nil
 }
 
-func (client *Client) PublishEvent(event common.MapStr) error {
+func (client *Client) PublishEvent(data outputs.Data) error {
 	if !client.connected {
 		return ErrNotConnected
 	}
+
+	event := data.Event
 
 	debugf("Publish event: %s", event)
 

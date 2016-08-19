@@ -125,17 +125,17 @@ func (out *httpOutput) Close() error {
 func (out *httpOutput) PublishEvent(
 	trans op.Signaler,
 	opts outputs.Options,
-	event common.MapStr,
+	data outputs.Data,
 ) error {
-	return out.mode.PublishEvent(trans, opts, event)
+	return out.mode.PublishEvent(trans, opts, data)
 }
 
 func (out *httpOutput) BulkPublish(
 	trans op.Signaler,
 	opts outputs.Options,
-	events []common.MapStr,
+	data []outputs.Data,
 ) error {
-	return out.mode.PublishEvents(trans, opts, events)
+	return out.mode.PublishEvents(trans, opts, data)
 }
 
 func parseProxyURL(raw string) (*url.URL, error) {
