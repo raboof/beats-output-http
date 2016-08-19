@@ -4,6 +4,8 @@ beats-output-http
 Outputter for the Elastic Beats platform that simply
 POSTs events to an HTTP endpoint.
 
+[![Build Status](https://travis-ci.org/raboof/beats-output-http.svg?branch=master)](https://travis-ci.org/raboof/beats-output-http)
+
 Usage
 =====
 
