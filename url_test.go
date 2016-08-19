@@ -119,7 +119,7 @@ func TestGetUrl(t *testing.T) {
 	}
 
 	for input, output := range inputOutput {
-		urlNew, err := getURL("", "", input)
+		urlNew, err := getURL("", 9200, "", input)
 		assert.Nil(t, err)
 		assert.Equal(t, output, urlNew, fmt.Sprintf("input: %v", input))
 	}
@@ -130,7 +130,7 @@ func TestGetUrl(t *testing.T) {
 		"http://username:password@es.found.io:9324": "http://username:password@es.found.io:9324/hello",
 	}
 	for input, output := range inputOutputWithDefaults {
-		urlNew, err := getURL("https", "/hello", input)
+		urlNew, err := getURL("https", 9200, "/hello", input)
 		assert.Nil(t, err)
 		assert.Equal(t, output, urlNew)
 	}
