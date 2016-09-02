@@ -1,7 +1,6 @@
 package http
 
 import (
-	"crypto/tls"
 	"errors"
 	"net/url"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/elastic/beats/libbeat/outputs"
 	"github.com/elastic/beats/libbeat/outputs/mode"
 	"github.com/elastic/beats/libbeat/outputs/mode/modeutil"
+	"github.com/elastic/beats/libbeat/outputs/transport"
 )
 
 type httpOutput struct {
@@ -71,8 +71,13 @@ func (out *httpOutput) init(cfg *common.Config) error {
 	var maxWaitRetry = time.Duration(60) * time.Second
 
 	loadBalance := config.LoadBalance
-	m, err := modeutil.NewConnectionMode(clients, !loadBalance,
-		maxAttempts, waitRetry, config.Timeout, maxWaitRetry)
+	m, err := modeutil.NewConnectionMode(clients, modeutil.Settings{
+		Failover:     !loadBalance,
+		MaxAttempts:  maxAttempts,
+		Timeout:      config.Timeout,
+		WaitRetry:    waitRetry,
+		MaxWaitRetry: maxWaitRetry,
+	})
 	if err != nil {
 		return err
 	}
@@ -83,7 +88,7 @@ func (out *httpOutput) init(cfg *common.Config) error {
 }
 
 func makeClientFactory(
-	tls *tls.Config,
+	tls *transport.TLSConfig,
 	config *httpConfig,
 	out *httpOutput,
 ) func(string) (mode.ProtocolClient, error) {
@@ -111,10 +116,16 @@ func makeClientFactory(
 			params = nil
 		}
 
-		return NewClient(
-			hostURL, proxyURL, tls,
-			config.Username, config.Password,
-			params, config.Timeout, config.CompressionLevel)
+		return NewClient(ClientSettings{
+			URL:              hostURL,
+			Proxy:            proxyURL,
+			TLS:              tls,
+			Username:         config.Username,
+			Password:         config.Password,
+			Parameters:       params,
+			Timeout:          config.Timeout,
+			CompressionLevel: config.CompressionLevel,
+		})
 	}
 }
 

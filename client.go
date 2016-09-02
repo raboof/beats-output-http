@@ -1,7 +1,6 @@
 package http
 
 import (
-	"crypto/tls"
 	"expvar"
 	"fmt"
 	"io"
@@ -12,16 +11,30 @@ import (
 
 	"github.com/elastic/beats/libbeat/logp"
 	"github.com/elastic/beats/libbeat/outputs"
+	"github.com/elastic/beats/libbeat/outputs/outil"
 	"github.com/elastic/beats/libbeat/outputs/transport"
 )
 
 type Client struct {
 	Connection
-	params map[string]string
+	tlsConfig *transport.TLSConfig
+	params    map[string]string
 
 	// additional configs
 	compressionLevel int
 	proxyURL         *url.URL
+}
+
+type ClientSettings struct {
+	URL                string
+	Proxy              *url.URL
+	TLS                *transport.TLSConfig
+	Username, Password string
+	Parameters         map[string]string
+	Index              outil.Selector
+	Pipeline           *outil.Selector
+	Timeout            time.Duration
+	CompressionLevel   int
 }
 
 type Connection struct {
@@ -48,29 +61,38 @@ var (
 )
 
 func NewClient(
-	hostURL string, proxyURL *url.URL, tls *tls.Config,
-	username, password string,
-	params map[string]string,
-	timeout time.Duration,
-	compression int,
+	s ClientSettings,
 ) (*Client, error) {
 	proxy := http.ProxyFromEnvironment
-	if proxyURL != nil {
-		proxy = http.ProxyURL(proxyURL)
+	if s.Proxy != nil {
+		proxy = http.ProxyURL(s.Proxy)
 	}
 
-	logp.Info("Http url: %s", hostURL)
+	logp.Info("Http url: %s", s.URL)
 
-	dialer := transport.NetDialer(timeout)
-	dialer = transport.StatsDialer(dialer, &transport.IOStats{
+	// TODO: add socks5 proxy support
+	var dialer, tlsDialer transport.Dialer
+	var err error
+
+	dialer = transport.NetDialer(s.Timeout)
+	tlsDialer, err = transport.TLSDialer(dialer, s.TLS, s.Timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	iostats := &transport.IOStats{
 		Read:        statReadBytes,
 		Write:       statWriteBytes,
 		ReadErrors:  statReadErrors,
 		WriteErrors: statWriteErrors,
-	})
+	}
+	dialer = transport.StatsDialer(dialer, iostats)
+	tlsDialer = transport.StatsDialer(tlsDialer, iostats)
 
-	var err error
+	params := s.Parameters
+
 	var encoder bodyEncoder
+	compression := s.CompressionLevel
 	if compression == 0 {
 		encoder = newJSONEncoder(nil)
 	} else {
@@ -82,22 +104,23 @@ func NewClient(
 
 	client := &Client{
 		Connection: Connection{
-			URL:      hostURL,
-			Username: username,
-			Password: password,
+			URL:      s.URL,
+			Username: s.Username,
+			Password: s.Password,
 			http: &http.Client{
 				Transport: &http.Transport{
-					Dial:            dialer.Dial,
-					TLSClientConfig: tls,
-					Proxy:           proxy,
+					Dial:    dialer.Dial,
+					DialTLS: tlsDialer.Dial,
+					Proxy:   proxy,
 				},
-				Timeout: timeout,
+				Timeout: s.Timeout,
 			},
 			encoder: encoder,
 		},
 		params: params,
 
-		proxyURL: proxyURL,
+		compressionLevel: compression,
+		proxyURL:         s.Proxy,
 	}
 
 	return client, nil
@@ -108,17 +131,17 @@ func (client *Client) Clone() *Client {
 	// client's close is for example generated for topology-map support. With params
 	// most likely containing the ingest node pipeline and default callback trying to
 	// create install a template, we don't want these to be included in the clone.
-
-	transport := client.http.Transport.(*http.Transport)
 	c, _ := NewClient(
-		client.URL,
-		client.proxyURL,
-		transport.TLSClientConfig,
-		client.Username,
-		client.Password,
-		nil, // XXX: do not pass params?
-		client.http.Timeout,
-		client.compressionLevel,
+		ClientSettings{
+			URL:              client.URL,
+			Proxy:            client.proxyURL,
+			TLS:              client.tlsConfig,
+			Username:         client.Username,
+			Password:         client.Password,
+			Parameters:       nil, // XXX: do not pass params?
+			Timeout:          client.http.Timeout,
+			CompressionLevel: client.compressionLevel,
+		},
 	)
 	return c
 }
