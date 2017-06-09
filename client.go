@@ -1,14 +1,14 @@
 package http
 
 import (
-	"expvar"
+	
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
-
+	"github.com/elastic/beats/libbeat/monitoring"
 	"github.com/elastic/beats/libbeat/logp"
 	"github.com/elastic/beats/libbeat/outputs"
 	"github.com/elastic/beats/libbeat/outputs/outil"
@@ -50,14 +50,15 @@ type Connection struct {
 
 // Metrics that can retrieved through the expvar web interface.
 var (
-	ackedEvents            = expvar.NewInt("libbeatHttpPublishedAndAckedEvents")
-	eventsNotAcked         = expvar.NewInt("libbeatHttpPublishedButNotAckedEvents")
-	publishEventsCallCount = expvar.NewInt("libbeatHttpPublishEventsCallCount")
+	ackedEvents = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishedAndAckedEvents")
+	eventsNotAcked = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishedButNotAckedEvents")
+	publishEventsCallCount = monitoring.NewInt(outputs.Metrics,"libbeatHttpPublishEventsCallCount")
 
-	statReadBytes   = expvar.NewInt("libbeatHttpPublishReadBytes")
-	statWriteBytes  = expvar.NewInt("libbeatHttpPublishWriteBytes")
-	statReadErrors  = expvar.NewInt("libbeatHttpPublishReadErrors")
-	statWriteErrors = expvar.NewInt("libbeatHttpPublishWriteErrors")
+	statReadBytes = monitoring.NewInt(outputs.Metrics,"libbeatHttpPublishReadBytes")
+	statWriteBytes = monitoring.NewInt(outputs.Metrics,"libbeatHttpPublishWriteBytes")
+	statReadErrors = monitoring.NewInt(outputs.Metrics,"libbeatHttpPublishReadErrors")
+	statWriteErrors = monitoring.NewInt(outputs.Metrics,"libbeatHttpPublishWriteErrors")
+	
 )
 
 func NewClient(
@@ -81,10 +82,11 @@ func NewClient(
 	}
 
 	iostats := &transport.IOStats{
-		Read:        statReadBytes,
+		Read:     statReadBytes,
 		Write:       statWriteBytes,
 		ReadErrors:  statReadErrors,
 		WriteErrors: statWriteErrors,
+		
 	}
 	dialer = transport.StatsDialer(dialer, iostats)
 	tlsDialer = transport.StatsDialer(tlsDialer, iostats)
