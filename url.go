@@ -1,122 +1,34 @@
 package http
 
-// Taken from https://github.com/elastic/beats/blob/master/libbeat/outputs/elasticsearch/url.go
-// with minor changes
-
 import (
-	"fmt"
-	"net"
+	"github.com/elastic/beats/libbeat/common"
 	"net/url"
-	"strconv"
 	"strings"
 )
 
-// Creates the url based on the url configuration.
-// Adds missing parts with defaults (scheme, host, port)
-func getURL(defaultScheme string, defaultPort int, defaultPath string, rawURL string) (string, error) {
-
-	if defaultScheme == "" {
-		defaultScheme = "http"
+func addToURL(urlStr string, params map[string]string) string {
+	if strings.HasSuffix(urlStr, "/") {
+		urlStr = strings.TrimSuffix(urlStr, "/")
 	}
-
-	addr, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
+	if len(params) == 0 {
+		return urlStr
 	}
-
-	scheme := addr.Scheme
-	host := addr.Host
-	port := defaultPort
-
-	// sanitize parse errors if url does not contain scheme
-	// if parse url looks funny, prepend schema and try again:
-	if addr.Scheme == "" || (addr.Host == "" && addr.Path == "" && addr.Opaque != "") {
-		rawURL = fmt.Sprintf("%v://%v", defaultScheme, rawURL)
-		if tmpAddr, err := url.Parse(rawURL); err == nil {
-			addr = tmpAddr
-			scheme = addr.Scheme
-			host = addr.Host
-		} else {
-			// If url doesn't have a scheme, host is written into path. For example: 192.168.3.7
-			scheme = defaultScheme
-			host = addr.Path
-			addr.Path = ""
-		}
-	}
-
-	if host == "" {
-		host = "localhost"
-	} else {
-		// split host and optional port
-		if splitHost, splitPort, err := net.SplitHostPort(host); err == nil {
-			host = splitHost
-			if tmpPort, err := strconv.Atoi(splitPort); err == nil {
-				port = tmpPort
-			}
-		}
-
-		// Check if ipv6
-		if strings.Count(host, ":") > 1 && strings.Count(host, "]") == 0 {
-			host = "[" + host + "]"
-		}
-	}
-
-	// Assign default path if not set
-	if addr.Path == "" {
-		addr.Path = defaultPath
-	}
-
-	// reconstruct url
-	addr.Scheme = scheme
-	addr.Host = host + ":" + strconv.Itoa(port)
-	return addr.String(), nil
-}
-
-func makeURL(url, path, pipeline string, params map[string]string) string {
-	if len(params) == 0 && pipeline == "" {
-		return url + path
-	}
-
-	return strings.Join([]string{
-		url, path, "?", urlEncode(pipeline, params),
-	}, "")
-}
-
-// Encode parameters in url
-func urlEncode(pipeline string, params map[string]string) string {
 	values := url.Values{}
-
 	for key, val := range params {
-		values.Add(key, string(val))
+		values.Add(key, val)
 	}
-
-	if pipeline != "" {
-		values.Add("pipeline", pipeline)
-	}
-
-	return values.Encode()
+	return common.EncodeURLParams(urlStr, values)
 }
 
-// Create path out of index, docType and id that is used for querying Elasticsearch
-func makePath(index string, docType string, id string) (string, error) {
-
-	var path string
-	if len(docType) > 0 {
-		if len(id) > 0 {
-			path = fmt.Sprintf("/%s/%s/%s", index, docType, id)
-		} else {
-			path = fmt.Sprintf("/%s/%s", index, docType)
-		}
-	} else {
-		if len(id) > 0 {
-			if len(index) > 0 {
-				path = fmt.Sprintf("/%s/%s", index, id)
-			} else {
-				path = fmt.Sprintf("/%s", id)
-			}
-		} else {
-			path = fmt.Sprintf("/%s", index)
-		}
+func parseProxyURL(raw string) (*url.URL, error) {
+	if raw == "" {
+		return nil, nil
 	}
-	return path, nil
+	parsedUrl, err := url.Parse(raw)
+	if err == nil && strings.HasPrefix(parsedUrl.Scheme, "http") {
+		return parsedUrl, err
+	}
+	// Proxy was bogus. Try prepending "http://" to it and
+	// see if that parses correctly.
+	return url.Parse("http://" + raw)
 }
