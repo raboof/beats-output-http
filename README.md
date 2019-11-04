@@ -19,22 +19,20 @@ package main
 import (
 	"os"
 
-	_ "github.com/raboof/beats-output-http"
+	_ "github.com/raboof/beats-output-http/http"
 
-	"github.com/elastic/beats/libbeat/beat"
-	"github.com/raboof/connbeat/beater"
+	"github.com/elastic/beats/filebeat/cmd"
 )
 
-var Name = "connbeat"
-
 func main() {
-	if err := beat.Run(Name, "", beater.New); err != nil {
+	if err := cmd.RootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
+
 ```
 
-Then configure the http output plugin in yourbeat.yaml:
+Then configure the http output plugin in filebeat.yaml:
 
 ```
 output:

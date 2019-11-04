@@ -2,160 +2,83 @@ package http
 
 import (
 	"errors"
-	"net/url"
-	"strings"
-	"time"
-
+	"github.com/elastic/beats/libbeat/beat"
 	"github.com/elastic/beats/libbeat/common"
-	"github.com/elastic/beats/libbeat/common/op"
 	"github.com/elastic/beats/libbeat/logp"
 	"github.com/elastic/beats/libbeat/outputs"
-	"github.com/elastic/beats/libbeat/outputs/mode"
-	"github.com/elastic/beats/libbeat/outputs/mode/modeutil"
-	"github.com/elastic/beats/libbeat/outputs/transport"
 )
-
-type httpOutput struct {
-	mode mode.ConnectionMode
-}
 
 func init() {
-	outputs.RegisterOutputPlugin("http", New)
+	outputs.RegisterType("http", MakeHTTP)
 }
 
 var (
-	debugf = logp.MakeDebug("http")
-)
-
-var (
+	logger = logp.NewLogger("output.http")
 	// ErrNotConnected indicates failure due to client having no valid connection
 	ErrNotConnected = errors.New("not connected")
-
 	// ErrJSONEncodeFailed indicates encoding failures
 	ErrJSONEncodeFailed = errors.New("json encode failed")
 )
 
-func New(beatName string, cfg *common.Config, _ int) (outputs.Outputer, error) {
-	output := &httpOutput{}
-	err := output.init(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return output, nil
-}
-
-func (out *httpOutput) init(cfg *common.Config) error {
+func MakeHTTP(
+	_ outputs.IndexManager,
+	beat beat.Info,
+	observer outputs.Observer,
+	cfg *common.Config,
+) (outputs.Group, error) {
 	config := defaultConfig
-	logp.Info("Initializing HTTP output")
 	if err := cfg.Unpack(&config); err != nil {
-		return err
+		return outputs.Fail(err)
 	}
-
 	tlsConfig, err := outputs.LoadTLSConfig(config.TLS)
 	if err != nil {
-		return err
+		return outputs.Fail(err)
 	}
-
-	clients, err := modeutil.MakeClients(cfg, makeClientFactory(tlsConfig, &config, out))
+	hosts, err := outputs.ReadHostList(cfg)
 	if err != nil {
-		return err
+		return outputs.Fail(err)
 	}
-
-	maxRetries := config.MaxRetries
-	maxAttempts := maxRetries + 1 // maximum number of send attempts (-1 = infinite)
-	if maxRetries < 0 {
-		maxAttempts = 0
-	}
-
-	var waitRetry = time.Duration(1) * time.Second
-	var maxWaitRetry = time.Duration(60) * time.Second
-
-	loadBalance := config.LoadBalance
-	m, err := modeutil.NewConnectionMode(clients, modeutil.Settings{
-		Failover:     !loadBalance,
-		MaxAttempts:  maxAttempts,
-		Timeout:      config.Timeout,
-		WaitRetry:    waitRetry,
-		MaxWaitRetry: maxWaitRetry,
-	})
+	proxyURL, err := parseProxyURL(config.ProxyURL)
 	if err != nil {
-		return err
+		return outputs.Fail(err)
 	}
-
-	out.mode = m
-
-	return nil
-}
-
-func makeClientFactory(
-	tls *transport.TLSConfig,
-	config *httpConfig,
-	out *httpOutput,
-) func(string) (mode.ProtocolClient, error) {
-	logp.Info("Making client factory")
-	return func(host string) (mode.ProtocolClient, error) {
-		logp.Info("Making client for host" + host)
-		hostURL, err := getURL(config.Protocol, 80, config.Path, host)
+	if proxyURL != nil {
+		logger.Info("Using proxy URL: %s", proxyURL)
+	}
+	params := config.Params
+	if len(params) == 0 {
+		params = nil
+	}
+	clients := make([]outputs.NetworkClient, len(hosts))
+	for i, host := range hosts {
+		logger.Info("Making client for host: " + host)
+		hostURL, err := common.MakeURL(config.Protocol, config.Path, host, 80)
 		if err != nil {
-			logp.Err("Invalid host param set: %s, Error: %v", host, err)
-			return nil, err
+			logger.Error("Invalid host param set: %s, Error: %v", host, err)
+			return outputs.Fail(err)
 		}
-
-		var proxyURL *url.URL
-		if config.ProxyURL != "" {
-			proxyURL, err = parseProxyURL(config.ProxyURL)
-			if err != nil {
-				return nil, err
-			}
-
-			logp.Info("Using proxy URL: %s", proxyURL)
-		}
-
-		params := config.Params
-		if len(params) == 0 {
-			params = nil
-		}
-
-		return NewClient(ClientSettings{
+		logger.Info("Final host URL: " + hostURL)
+		var client outputs.NetworkClient
+		client, err = NewClient(ClientSettings{
 			URL:              hostURL,
 			Proxy:            proxyURL,
-			TLS:              tls,
+			TLS:              tlsConfig,
 			Username:         config.Username,
 			Password:         config.Password,
 			Parameters:       params,
 			Timeout:          config.Timeout,
 			CompressionLevel: config.CompressionLevel,
+			Observer:         observer,
+			BatchPublish:     config.BatchPublish,
+			Headers:          config.Headers,
+			ContentType:      config.ContentType,
 		})
+
+		if err != nil {
+			return outputs.Fail(err)
+		}
+		client = outputs.WithBackoff(client, config.Backoff.Init, config.Backoff.Max)
+		clients[i] = client
 	}
-}
-
-func (out *httpOutput) Close() error {
-	return nil
-}
-
-func (out *httpOutput) PublishEvent(
-	trans op.Signaler,
-	opts outputs.Options,
-	data outputs.Data,
-) error {
-	return out.mode.PublishEvent(trans, opts, data)
-}
-
-func (out *httpOutput) BulkPublish(
-	trans op.Signaler,
-	opts outputs.Options,
-	data []outputs.Data,
-) error {
-	return out.mode.PublishEvents(trans, opts, data)
-}
-
-func parseProxyURL(raw string) (*url.URL, error) {
-	url, err := url.Parse(raw)
-	if err == nil && strings.HasPrefix(url.Scheme, "http") {
-		return url, err
-	}
-
-	// Proxy was bogus. Try prepending "http://" to it and
-	// see if that parses correctly.
-	return url.Parse("http://" + raw)
+	return outputs.SuccessNet(config.LoadBalance, config.BatchSize, config.MaxRetries, clients)
 }
