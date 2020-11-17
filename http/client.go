@@ -3,23 +3,25 @@ package http
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/elastic/beats/libbeat/beat"
-	"github.com/elastic/beats/libbeat/common"
-	"github.com/elastic/beats/libbeat/outputs"
-	"github.com/elastic/beats/libbeat/outputs/outil"
-	"github.com/elastic/beats/libbeat/outputs/transport"
-	"github.com/elastic/beats/libbeat/publisher"
+	"github.com/elastic/beats/v7/libbeat/beat"
+	"github.com/elastic/beats/v7/libbeat/common"
+	"github.com/elastic/beats/v7/libbeat/outputs"
+	"github.com/elastic/beats/v7/libbeat/outputs/outil"
+	"github.com/elastic/beats/v7/libbeat/common/transport"
+	"github.com/elastic/beats/v7/libbeat/common/transport/tlscommon"
+	"github.com/elastic/beats/v7/libbeat/publisher"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
+	"context"
 )
 
 // Client struct
 type Client struct {
 	Connection
-	tlsConfig *transport.TLSConfig
+	tlsConfig *tlscommon.TLSConfig
 	params    map[string]string
 	// additional configs
 	compressionLevel int
@@ -33,7 +35,7 @@ type Client struct {
 type ClientSettings struct {
 	URL                string
 	Proxy              *url.URL
-	TLS                *transport.TLSConfig
+	TLS                *tlscommon.TLSConfig
 	Username, Password string
 	Parameters         map[string]string
 	Index              outil.Selector
@@ -162,7 +164,7 @@ func (client *Client) String() string {
 }
 
 // Publish sends events to the clients sink.
-func (client *Client) Publish(batch publisher.Batch) error {
+func (client *Client) Publish(_ context.Context, batch publisher.Batch) error {
 	events := batch.Events()
 	rest, err := client.publishEvents(events)
 	if len(rest) == 0 {

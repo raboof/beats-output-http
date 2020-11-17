@@ -3,26 +3,26 @@ package http
 import (
 	"time"
 
-	"github.com/elastic/beats/libbeat/outputs"
+	"github.com/elastic/beats/v7/libbeat/common/transport/tlscommon"
 )
 
 type httpConfig struct {
-	Protocol         string             `config:"protocol"`
-	Path             string             `config:"path"`
-	Params           map[string]string  `config:"parameters"`
-	Username         string             `config:"username"`
-	Password         string             `config:"password"`
-	ProxyURL         string             `config:"proxy_url"`
-	LoadBalance      bool               `config:"loadbalance"`
-	BatchPublish     bool               `config:"batch_publish"`
-	BatchSize        int                `config:"batch_size"`
-	CompressionLevel int                `config:"compression_level" validate:"min=0, max=9"`
-	TLS              *outputs.TLSConfig `config:"tls"`
-	MaxRetries       int                `config:"max_retries"`
-	Timeout          time.Duration      `config:"timeout"`
-	Headers          map[string]string  `config:"headers"`
-	ContentType      string             `config:"content_type"`
-	Backoff          backoff            `config:"backoff"`
+	Protocol         string               `config:"protocol"`
+	Path             string               `config:"path"`
+	Params           map[string]string    `config:"parameters"`
+	Username         string               `config:"username"`
+	Password         string               `config:"password"`
+	ProxyURL         string               `config:"proxy_url"`
+	LoadBalance      bool                 `config:"loadbalance"`
+	BatchPublish     bool                 `config:"batch_publish"`
+	BatchSize        int                  `config:"batch_size"`
+	CompressionLevel int                  `config:"compression_level" validate:"min=0, max=9"`
+	TLS              *tlscommon.TLSConfig `config:"tls"`
+	MaxRetries       int                  `config:"max_retries"`
+	Timeout          time.Duration        `config:"timeout"`
+	Headers          map[string]string    `config:"headers"`
+	ContentType      string               `config:"content_type"`
+	Backoff          backoff              `config:"backoff"`
 }
 
 type backoff struct {
