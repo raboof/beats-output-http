@@ -17,7 +17,7 @@ type httpConfig struct {
 	BatchPublish     bool                 `config:"batch_publish"`
 	BatchSize        int                  `config:"batch_size"`
 	CompressionLevel int                  `config:"compression_level" validate:"min=0, max=9"`
-	TLS              *tlscommon.TLSConfig `config:"tls"`
+	TLS              *tlscommon.Config `config:"tls"`
 	MaxRetries       int                  `config:"max_retries"`
 	Timeout          time.Duration        `config:"timeout"`
 	Headers          map[string]string    `config:"headers"`
