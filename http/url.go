@@ -1,7 +1,7 @@
 package http
 
 import (
-	"github.com/elastic/beats/libbeat/common"
+	"github.com/elastic/beats/v7/libbeat/common"
 	"net/url"
 	"strings"
 )
