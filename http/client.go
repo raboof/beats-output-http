@@ -29,6 +29,7 @@ type Client struct {
 	batchPublish     bool
 	observer         outputs.Observer
 	headers          map[string]string
+	format           string
 }
 
 // ClientSettings struct
@@ -46,6 +47,7 @@ type ClientSettings struct {
 	BatchPublish       bool
 	Headers            map[string]string
 	ContentType        string
+	Format             string
 }
 
 // Connection struct
@@ -90,9 +92,19 @@ func NewClient(s ClientSettings) (*Client, error) {
 	var encoder bodyEncoder
 	compression := s.CompressionLevel
 	if compression == 0 {
-		encoder = newJSONEncoder(nil)
+		switch s.Format {
+			case "json":
+				encoder = newJSONEncoder(nil)
+			case "json_lines":
+				encoder = newJSONLinesEncoder(nil)
+		}
 	} else {
-		encoder, err = newGzipEncoder(compression, nil)
+		switch s.Format {
+			case "json":
+				encoder, err = newGzipEncoder(compression, nil)
+			case "json_lines":
+				encoder, err = newGzipLinesEncoder(compression, nil)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -118,6 +130,7 @@ func NewClient(s ClientSettings) (*Client, error) {
 		proxyURL:         s.Proxy,
 		batchPublish:     s.BatchPublish,
 		headers:          s.Headers,
+		format:           s.Format,
 	}
 
 	return client, nil
@@ -142,6 +155,7 @@ func (client *Client) Clone() *Client {
 			BatchPublish:     client.batchPublish,
 			Headers:          client.headers,
 			ContentType:      client.ContentType,
+			Format:           client.format,
 		},
 	)
 	return c

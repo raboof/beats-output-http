@@ -73,6 +73,7 @@ func MakeHTTP(
 			BatchPublish:     config.BatchPublish,
 			Headers:          config.Headers,
 			ContentType:      config.ContentType,
+			Format:           config.Format,
 		})
 
 		if err != nil {

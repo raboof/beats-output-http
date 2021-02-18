@@ -9,6 +9,7 @@
 #    proxy_url: "xyz"
 #    loadbalance: true
 #    compression_level: 9
+#    format: "json_lines"
 #    max_retries: 3
 #    timeout: 90 seconds
 #    tls:
