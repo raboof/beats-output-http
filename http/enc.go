@@ -18,7 +18,7 @@ type bodyEncoder interface {
 type bulkBodyEncoder interface {
 	bulkWriter
 
-	AddHeader(*http.Header)
+	AddHeader(*http.Header, string)
 	Reset()
 }
 
@@ -56,8 +56,12 @@ func (b *jsonEncoder) Reset() {
 	b.buf.Reset()
 }
 
-func (b *jsonEncoder) AddHeader(header *http.Header) {
-	header.Add("Content-Type", "application/json; charset=UTF-8")
+func (b *jsonEncoder) AddHeader(header *http.Header, contentType string) {
+	if (contentType == "") {
+		header.Add("Content-Type", "application/json; charset=UTF-8")
+	} else {
+		header.Add("Content-Type", contentType)
+	}
 }
 
 func (b *jsonEncoder) Reader() io.Reader {
@@ -101,8 +105,12 @@ func (b *jsonLinesEncoder) Reset() {
 	b.buf.Reset()
 }
 
-func (b *jsonLinesEncoder) AddHeader(header *http.Header) {
-	header.Add("Content-Type", "application/x-ndjson; charset=UTF-8")
+func (b *jsonLinesEncoder) AddHeader(header *http.Header, contentType string) {
+	if (contentType == "") {
+		header.Add("Content-Type", "application/x-ndjson; charset=UTF-8")
+	} else {
+		header.Add("Content-Type", contentType)
+	}
 }
 
 func (b *jsonLinesEncoder) Reader() io.Reader {
@@ -169,8 +177,12 @@ func (b *gzipEncoder) Reader() io.Reader {
 	return b.buf
 }
 
-func (b *gzipEncoder) AddHeader(header *http.Header) {
-	header.Add("Content-Type", "application/json; charset=UTF-8")
+func (b *gzipEncoder) AddHeader(header *http.Header, contentType string) {
+	if (contentType == "") {
+		header.Add("Content-Type", "application/json; charset=UTF-8")
+	} else {
+		header.Add("Content-Type", contentType)
+	}
 	header.Add("Content-Encoding", "gzip")
 }
 
@@ -225,8 +237,12 @@ func (b *gzipLinesEncoder) Reader() io.Reader {
 	return b.buf
 }
 
-func (b *gzipLinesEncoder) AddHeader(header *http.Header) {
-	header.Add("Content-Type", "application/x-ndjson; charset=UTF-8")
+func (b *gzipLinesEncoder) AddHeader(header *http.Header, contentType string) {
+	if (contentType == "") {
+		header.Add("Content-Type", "application/x-ndjson; charset=UTF-8")
+	} else {
+		header.Add("Content-Type", contentType)
+	}
 	header.Add("Content-Encoding", "gzip")
 }
 
