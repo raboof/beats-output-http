@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"reflect"
 )
 
 type bodyEncoder interface {
@@ -30,7 +31,16 @@ type jsonEncoder struct {
 	buf *bytes.Buffer
 }
 
+type jsonLinesEncoder struct {
+	buf *bytes.Buffer
+}
+
 type gzipEncoder struct {
+	buf  *bytes.Buffer
+	gzip *gzip.Writer
+}
+
+type gzipLinesEncoder struct {
 	buf  *bytes.Buffer
 	gzip *gzip.Writer
 }
@@ -77,6 +87,63 @@ func (b *jsonEncoder) Add(meta, obj interface{}) error {
 		b.buf.Truncate(pos)
 		return err
 	}
+	return nil
+}
+
+func newJSONLinesEncoder(buf *bytes.Buffer) *jsonLinesEncoder {
+	if buf == nil {
+		buf = bytes.NewBuffer(nil)
+	}
+	return &jsonLinesEncoder{buf}
+}
+
+func (b *jsonLinesEncoder) Reset() {
+	b.buf.Reset()
+}
+
+func (b *jsonLinesEncoder) AddHeader(header *http.Header) {
+	header.Add("Content-Type", "application/x-ndjson; charset=UTF-8")
+}
+
+func (b *jsonLinesEncoder) Reader() io.Reader {
+	return b.buf
+}
+
+func (b *jsonLinesEncoder) Marshal(obj interface{}) error {
+	b.Reset()
+	return b.AddRaw(obj)
+}
+
+func (b *jsonLinesEncoder) AddRaw(obj interface{}) error {
+	enc := json.NewEncoder(b.buf)
+
+	// single event
+	if reflect.TypeOf(obj).Kind() == reflect.Map {
+		return enc.Encode(obj)
+	}
+
+	// batch of events
+	for _, item := range obj.([]eventRaw) {
+		err := enc.Encode(item)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *jsonLinesEncoder) Add(meta, obj interface{}) error {
+	pos := b.buf.Len()
+
+	if err := b.AddRaw(meta); err != nil {
+		b.buf.Truncate(pos)
+		return err
+	}
+	if err := b.AddRaw(obj); err != nil {
+		b.buf.Truncate(pos)
+		return err
+	}
+
 	return nil
 }
 
@@ -128,6 +195,72 @@ func (b *gzipEncoder) Add(meta, obj interface{}) error {
 		return err
 	}
 	if err := enc.Encode(obj); err != nil {
+		b.buf.Truncate(pos)
+		return err
+	}
+
+	b.gzip.Flush()
+	return nil
+}
+
+func newGzipLinesEncoder(level int, buf *bytes.Buffer) (*gzipLinesEncoder, error) {
+	if buf == nil {
+		buf = bytes.NewBuffer(nil)
+	}
+	w, err := gzip.NewWriterLevel(buf, level)
+	if err != nil {
+		return nil, err
+	}
+
+	return &gzipLinesEncoder{buf, w}, nil
+}
+
+func (b *gzipLinesEncoder) Reset() {
+	b.buf.Reset()
+	b.gzip.Reset(b.buf)
+}
+
+func (b *gzipLinesEncoder) Reader() io.Reader {
+	b.gzip.Close()
+	return b.buf
+}
+
+func (b *gzipLinesEncoder) AddHeader(header *http.Header) {
+	header.Add("Content-Type", "application/x-ndjson; charset=UTF-8")
+	header.Add("Content-Encoding", "gzip")
+}
+
+func (b *gzipLinesEncoder) Marshal(obj interface{}) error {
+	b.Reset()
+	return b.AddRaw(obj)
+}
+
+func (b *gzipLinesEncoder) AddRaw(obj interface{}) error {
+	enc := json.NewEncoder(b.gzip)
+
+	// single event
+	if reflect.TypeOf(obj).Kind() == reflect.Map {
+		return enc.Encode(obj)
+	}
+
+	// batch of events
+	for _, item := range obj.([]eventRaw) {
+		err := enc.Encode(item)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *gzipLinesEncoder) Add(meta, obj interface{}) error {
+	pos := b.buf.Len()
+
+	if err := b.AddRaw(meta); err != nil {
+		b.buf.Truncate(pos)
+		return err
+	}
+	if err := b.AddRaw(obj); err != nil {
 		b.buf.Truncate(pos)
 		return err
 	}

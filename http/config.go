@@ -2,6 +2,7 @@ package http
 
 import (
 	"time"
+	"fmt"
 
 	"github.com/elastic/beats/v7/libbeat/common/transport/tlscommon"
 )
@@ -23,6 +24,7 @@ type httpConfig struct {
 	Headers          map[string]string `config:"headers"`
 	ContentType      string            `config:"content_type"`
 	Backoff          backoff           `config:"backoff"`
+	Format           string            `config:"format"`
 }
 
 type backoff struct {
@@ -49,6 +51,7 @@ var (
 			Init: 1 * time.Second,
 			Max:  60 * time.Second,
 		},
+		Format:           "json",
 	}
 )
 
@@ -57,6 +60,9 @@ func (c *httpConfig) Validate() error {
 		if _, err := parseProxyURL(c.ProxyURL); err != nil {
 			return err
 		}
+	}
+	if c.Format != "json" && c.Format != "json_lines" {
+		return fmt.Errorf("Unsupported config option format: %s", c.Format)
 	}
 
 	return nil
