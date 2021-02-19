@@ -303,14 +303,13 @@ func (conn *Connection) execRequest(method, url string, body io.Reader, headers 
 		return 0, nil, err
 	}
 	if body != nil {
-		conn.encoder.AddHeader(&req.Header)
+		conn.encoder.AddHeader(&req.Header, conn.ContentType)
 	}
 	return conn.execHTTPRequest(req, headers)
 }
 
 func (conn *Connection) execHTTPRequest(req *http.Request, headers map[string]string) (int, []byte, error) {
 	req.Header.Add("Accept", "application/json")
-	req.Header.Add("Content-Type", conn.ContentType)
 	for key, value := range headers {
 		req.Header.Add(key, value)
 	}
