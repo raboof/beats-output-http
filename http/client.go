@@ -1,26 +1,29 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/elastic/beats/v7/libbeat/beat"
-	"github.com/elastic/beats/v7/libbeat/common"
-	"github.com/elastic/beats/v7/libbeat/outputs"
-	"github.com/elastic/beats/v7/libbeat/outputs/outil"
-	"github.com/elastic/beats/v7/libbeat/common/transport"
-	"github.com/elastic/beats/v7/libbeat/common/transport/tlscommon"
-	"github.com/elastic/beats/v7/libbeat/publisher"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
-	"context"
+
+	"github.com/elastic/beats/v7/libbeat/beat"
+	"github.com/elastic/beats/v7/libbeat/common"
+	"github.com/elastic/beats/v7/libbeat/common/transport"
+	"github.com/elastic/beats/v7/libbeat/common/transport/tlscommon"
+	"github.com/elastic/beats/v7/libbeat/logp"
+	"github.com/elastic/beats/v7/libbeat/outputs"
+	"github.com/elastic/beats/v7/libbeat/outputs/outil"
+	"github.com/elastic/beats/v7/libbeat/publisher"
 )
 
 // Client struct
 type Client struct {
 	Connection
+	log       *logp.Logger
 	tlsConfig *tlscommon.TLSConfig
 	params    map[string]string
 	// additional configs
@@ -59,6 +62,7 @@ type Connection struct {
 	connected   bool
 	encoder     bodyEncoder
 	ContentType string
+	log         *logp.Logger
 }
 
 type eventRaw map[string]json.RawMessage
@@ -70,19 +74,19 @@ type event struct {
 
 // NewClient instantiate a client.
 func NewClient(s ClientSettings) (*Client, error) {
+
+	log := logp.NewLogger("output.http")
+
 	proxy := http.ProxyFromEnvironment
 	if s.Proxy != nil {
 		proxy = http.ProxyURL(s.Proxy)
 	}
-	logger.Info("HTTP URL: %s", s.URL)
+	log.Info("HTTP URL: %s", s.URL)
 	var dialer, tlsDialer transport.Dialer
 	var err error
 
 	dialer = transport.NetDialer(s.Timeout)
-	tlsDialer, err = transport.TLSDialer(dialer, s.TLS, s.Timeout)
-	if err != nil {
-		return nil, err
-	}
+	tlsDialer = transport.TLSDialer(dialer, s.TLS, s.Timeout)
 
 	if st := s.Observer; st != nil {
 		dialer = transport.StatsDialer(dialer, st)
@@ -93,17 +97,17 @@ func NewClient(s ClientSettings) (*Client, error) {
 	compression := s.CompressionLevel
 	if compression == 0 {
 		switch s.Format {
-			case "json":
-				encoder = newJSONEncoder(nil)
-			case "json_lines":
-				encoder = newJSONLinesEncoder(nil)
+		case "json":
+			encoder = newJSONEncoder(nil)
+		case "json_lines":
+			encoder = newJSONLinesEncoder(nil)
 		}
 	} else {
 		switch s.Format {
-			case "json":
-				encoder, err = newGzipEncoder(compression, nil)
-			case "json_lines":
-				encoder, err = newGzipLinesEncoder(compression, nil)
+		case "json":
+			encoder, err = newGzipEncoder(compression, nil)
+		case "json_lines":
+			encoder, err = newGzipLinesEncoder(compression, nil)
 		}
 		if err != nil {
 			return nil, err
@@ -124,6 +128,7 @@ func NewClient(s ClientSettings) (*Client, error) {
 				Timeout: s.Timeout,
 			},
 			encoder: encoder,
+			log:     log,
 		},
 		params:           params,
 		compressionLevel: compression,
@@ -131,6 +136,7 @@ func NewClient(s ClientSettings) (*Client, error) {
 		batchPublish:     s.BatchPublish,
 		headers:          s.Headers,
 		format:           s.Format,
+		log:              log,
 	}
 
 	return client, nil
@@ -203,13 +209,13 @@ func (client *Client) publishEvents(data []publisher.Event) ([]publisher.Event, 
 	sendErr := error(nil)
 	if client.batchPublish {
 		// Publish events in bulk
-		logger.Debugf("Publishing events in batch.")
+		client.log.Debugf("Publishing events in batch.")
 		sendErr = client.BatchPublishEvent(data)
 		if sendErr != nil {
 			return data, sendErr
 		}
 	} else {
-		logger.Debugf("Publishing events one by one.")
+		client.log.Debugf("Publishing events one by one.")
 		for index, event := range data {
 			sendErr = client.PublishEvent(event)
 			if sendErr != nil {
@@ -219,7 +225,7 @@ func (client *Client) publishEvents(data []publisher.Event) ([]publisher.Event, 
 			}
 		}
 	}
-	logger.Debugf("PublishEvents: %d metrics have been published over HTTP in %v.", len(data), time.Now().Sub(begin))
+	client.log.Debugf("PublishEvents: %d metrics have been published over HTTP in %v.", len(data), time.Now().Sub(begin))
 	if len(failedEvents) > 0 {
 		return failedEvents, sendErr
 	}
@@ -233,11 +239,11 @@ func (client *Client) BatchPublishEvent(data []publisher.Event) error {
 	}
 	var events = make([]eventRaw, len(data))
 	for i, event := range data {
-		events[i] = makeEvent(&event.Content)
+		events[i] = client.makeEvent(&event.Content)
 	}
 	status, _, err := client.request("POST", client.params, events, client.headers)
 	if err != nil {
-		logger.Warn("Fail to insert a single event: %s", err)
+		client.log.Warn("Fail to insert a single event: %s", err)
 		if err == ErrJSONEncodeFailed {
 			// don't retry unencodable values
 			return nil
@@ -259,10 +265,10 @@ func (client *Client) PublishEvent(data publisher.Event) error {
 		return ErrNotConnected
 	}
 	event := data
-	logger.Debugf("Publish event: %s", event)
-	status, _, err := client.request("POST", client.params, makeEvent(&event.Content), client.headers)
+	client.log.Debugf("Publish event: %s", event)
+	status, _, err := client.request("POST", client.params, client.makeEvent(&event.Content), client.headers)
 	if err != nil {
-		logger.Warn("Fail to insert a single event: %s", err)
+		client.log.Warn("Fail to insert a single event: %s", err)
 		if err == ErrJSONEncodeFailed {
 			// don't retry unencodable values
 			return nil
@@ -283,14 +289,14 @@ func (client *Client) PublishEvent(data publisher.Event) error {
 
 func (conn *Connection) request(method string, params map[string]string, body interface{}, headers map[string]string) (int, []byte, error) {
 	urlStr := addToURL(conn.URL, params)
-	logger.Debugf("%s %s %v", method, urlStr, body)
+	conn.log.Debugf("%s %s %v", method, urlStr, body)
 
 	if body == nil {
 		return conn.execRequest(method, urlStr, nil, headers)
 	}
 
 	if err := conn.encoder.Marshal(body); err != nil {
-		logger.Warn("Failed to json encode body (%v): %#v", err, body)
+		conn.log.Warn("Failed to json encode body (%v): %#v", err, body)
 		return 0, nil, ErrJSONEncodeFailed
 	}
 	return conn.execRequest(method, urlStr, conn.encoder.Reader(), headers)
@@ -299,7 +305,7 @@ func (conn *Connection) request(method string, params map[string]string, body in
 func (conn *Connection) execRequest(method, url string, body io.Reader, headers map[string]string) (int, []byte, error) {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		logger.Warn("Failed to create request: %v", err)
+		conn.log.Warn("Failed to create request: %v", err)
 		return 0, nil, err
 	}
 	if body != nil {
@@ -321,7 +327,7 @@ func (conn *Connection) execHTTPRequest(req *http.Request, headers map[string]st
 		conn.connected = false
 		return 0, nil, err
 	}
-	defer closing(resp.Body)
+	defer conn.closing(resp.Body)
 
 	status := resp.StatusCode
 	if status >= 300 {
@@ -336,34 +342,34 @@ func (conn *Connection) execHTTPRequest(req *http.Request, headers map[string]st
 	return status, obj, nil
 }
 
-func closing(c io.Closer) {
+func (conn *Connection) closing(c io.Closer) {
 	err := c.Close()
 	if err != nil {
-		logger.Warn("Close failed with: %v", err)
+		conn.log.Warn("Close failed with: %v", err)
 	}
 }
 
 //this should ideally be in enc.go
-func makeEvent(v *beat.Event) map[string]json.RawMessage {
+func (client *Client) makeEvent(v *beat.Event) map[string]json.RawMessage {
 	// Inline not supported,
 	// HT: https://stackoverflow.com/questions/49901287/embed-mapstringstring-in-go-json-marshaling-without-extra-json-property-inlin
 	type event0 event // prevent recursion
 	e := event{Timestamp: v.Timestamp.UTC(), Fields: v.Fields}
 	b, err := json.Marshal(event0(e))
 	if err != nil {
-		logger.Warn("Error encoding event to JSON: %v", err)
+		client.log.Warn("Error encoding event to JSON: %v", err)
 	}
 
 	var eventMap map[string]json.RawMessage
 	err = json.Unmarshal(b, &eventMap)
 	if err != nil {
-		logger.Warn("Error decoding JSON to map: %v", err)
+		client.log.Warn("Error decoding JSON to map: %v", err)
 	}
 	// Add the individual fields to the map, flatten "Fields"
 	for j, k := range e.Fields {
 		b, err = json.Marshal(k)
 		if err != nil {
-			logger.Warn("Error encoding map to JSON: %v", err)
+			client.log.Warn("Error encoding map to JSON: %v", err)
 		}
 		eventMap[j] = b
 	}
