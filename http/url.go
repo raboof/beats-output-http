@@ -1,9 +1,10 @@
 package http
 
 import (
-	"github.com/elastic/beats/v7/libbeat/common"
 	"net/url"
 	"strings"
+
+	"github.com/elastic/beats/v7/libbeat/common"
 )
 
 func addToURL(urlStr string, params map[string]string) string {
