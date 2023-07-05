@@ -1,21 +1,22 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/elastic/beats/v7/libbeat/beat"
-	"github.com/elastic/beats/v7/libbeat/common"
-	"github.com/elastic/beats/v7/libbeat/outputs"
-	"github.com/elastic/beats/v7/libbeat/outputs/outil"
-	"github.com/elastic/beats/v7/libbeat/common/transport"
-	"github.com/elastic/beats/v7/libbeat/common/transport/tlscommon"
-	"github.com/elastic/beats/v7/libbeat/publisher"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
-	"context"
+
+	"github.com/elastic/beats/v7/libbeat/beat"
+	"github.com/elastic/beats/v7/libbeat/outputs"
+	"github.com/elastic/beats/v7/libbeat/outputs/outil"
+	"github.com/elastic/beats/v7/libbeat/publisher"
+	"github.com/elastic/elastic-agent-libs/mapstr"
+	"github.com/elastic/elastic-agent-libs/transport"
+	"github.com/elastic/elastic-agent-libs/transport/tlscommon"
 )
 
 // Client struct
@@ -64,8 +65,8 @@ type Connection struct {
 type eventRaw map[string]json.RawMessage
 
 type event struct {
-	Timestamp time.Time     `json:"@timestamp"`
-	Fields    common.MapStr `json:"-"`
+	Timestamp time.Time `json:"@timestamp"`
+	Fields    mapstr.M  `json:"-"`
 }
 
 // NewClient instantiate a client.
@@ -79,10 +80,7 @@ func NewClient(s ClientSettings) (*Client, error) {
 	var err error
 
 	dialer = transport.NetDialer(s.Timeout)
-	tlsDialer, err = transport.TLSDialer(dialer, s.TLS, s.Timeout)
-	if err != nil {
-		return nil, err
-	}
+	tlsDialer = transport.TLSDialer(dialer, s.TLS, s.Timeout)
 
 	if st := s.Observer; st != nil {
 		dialer = transport.StatsDialer(dialer, st)
@@ -93,17 +91,17 @@ func NewClient(s ClientSettings) (*Client, error) {
 	compression := s.CompressionLevel
 	if compression == 0 {
 		switch s.Format {
-			case "json":
-				encoder = newJSONEncoder(nil)
-			case "json_lines":
-				encoder = newJSONLinesEncoder(nil)
+		case "json":
+			encoder = newJSONEncoder(nil)
+		case "json_lines":
+			encoder = newJSONLinesEncoder(nil)
 		}
 	} else {
 		switch s.Format {
-			case "json":
-				encoder, err = newGzipEncoder(compression, nil)
-			case "json_lines":
-				encoder, err = newGzipLinesEncoder(compression, nil)
+		case "json":
+			encoder, err = newGzipEncoder(compression, nil)
+		case "json_lines":
+			encoder, err = newGzipLinesEncoder(compression, nil)
 		}
 		if err != nil {
 			return nil, err
@@ -343,7 +341,7 @@ func closing(c io.Closer) {
 	}
 }
 
-//this should ideally be in enc.go
+// this should ideally be in enc.go
 func makeEvent(v *beat.Event) map[string]json.RawMessage {
 	// Inline not supported,
 	// HT: https://stackoverflow.com/questions/49901287/embed-mapstringstring-in-go-json-marshaling-without-extra-json-property-inlin

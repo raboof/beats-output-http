@@ -2,11 +2,13 @@ package http
 
 import (
 	"errors"
+
 	"github.com/elastic/beats/v7/libbeat/beat"
 	"github.com/elastic/beats/v7/libbeat/common"
-	"github.com/elastic/beats/v7/libbeat/logp"
 	"github.com/elastic/beats/v7/libbeat/outputs"
-	"github.com/elastic/beats/v7/libbeat/common/transport/tlscommon"
+	conf "github.com/elastic/elastic-agent-libs/config"
+	"github.com/elastic/elastic-agent-libs/logp"
+	"github.com/elastic/elastic-agent-libs/transport/tlscommon"
 )
 
 func init() {
@@ -25,7 +27,7 @@ func MakeHTTP(
 	_ outputs.IndexManager,
 	beat beat.Info,
 	observer outputs.Observer,
-	cfg *common.Config,
+	cfg *conf.C,
 ) (outputs.Group, error) {
 	config := defaultConfig
 	if err := cfg.Unpack(&config); err != nil {
