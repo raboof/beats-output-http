@@ -1,10 +1,10 @@
 package http
 
 import (
-	"time"
 	"fmt"
+	"time"
 
-	"github.com/elastic/beats/v7/libbeat/common/transport/tlscommon"
+	"github.com/elastic/elastic-agent-libs/transport/tlscommon"
 )
 
 type httpConfig struct {
@@ -51,7 +51,7 @@ var (
 			Init: 1 * time.Second,
 			Max:  60 * time.Second,
 		},
-		Format:           "json",
+		Format: "json",
 	}
 )
 
